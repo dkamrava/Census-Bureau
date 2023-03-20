@@ -1,0 +1,74 @@
+---
+title: "RandomForest Dilara"
+output: html_document
+date: "2022-11-29"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Random Forest
+
+First, I will import the data and filter it to include the variables we want to include as candidate predictors.
+```{r import}
+eviction <- read.csv("sampleeviction.csv")
+
+eviction <- eviction[, c(8, 11:38)]
+head(eviction)
+```
+
+### Assumptions
+Random forests are non-parametric methods of classification, so our data is not assumed to have a particular underlying distribution. It can also handle both categorical and continuous variables. Furthermore, random forests can handle collinearity in the data by decorrelating the trees, so a lack of correlation between our variables is not required to perform this analysis. We only assume that sampling is representative of the actual values.
+
+### Model Fitting
+After going through any assumptions our model might have, we are ready to implement random forests on the eviction data. I will be creating bagged regression trees because our outcome, eviction judgement rate, is continuous.
+
+Random forests are only allowed to consider a random sample of m predictors from the full set of p predictors at each node split. The optimal value of m will vary depending on how many correlated predictors there are; a smaller m is helpful when there are more correlated predictors. We can use a 10-fold cross-validation and a 5-fold to see which m value gives us the lowest RMSE. I will set the seed to ensure reproducible results and that my RMSE mentions stay constant.
+```{r model}
+library(caret)
+set.seed(100)
+
+#sqrt transform
+eviction$judgement_rate <- sqrt(eviction$judgement_rate)
+
+eviction.rf.cv5 <- train(judgement_rate ~., data = eviction, method = "rf", importance = T,
+                   trControl = trainControl(method = "cv", number = 5))
+
+eviction.rf.cv5
+```
+We can see that the 5-fold CV RMSE on our eviction data was 0.309, and the model chose m = 2. We can see how the model performs on our test data and see if the error rate changes by a large amount.
+
+```{r model2}
+library(randomForest)
+set.seed(100)
+
+# select a sample for training data
+train <- sample(1:nrow(eviction), ceiling(nrow(eviction)*2/3))
+
+eviction.rf <- randomForest(judgement_rate ~ ., data = eviction, subset = train, importance = TRUE)
+
+# calculate error rate on test data
+pred.RF <- predict(eviction.rf, newdata = eviction[-train,])
+rmse.RF <- sqrt(mean((eviction$judgement_rate[-train] - pred.RF)^2))
+rmse.RF
+```
+The RMSE of our random forest model on the test data is 0.351, which is slightly higher than the error on our training data but not by a large amount. 
+
+We can also observe where RMSE seems to level off as the number of trees increases.
+```{r rmse}
+plot(sqrt(eviction.rf$mse), col = "blue", type = "l", xlab = "Number of trees", ylab = "RMSE")
+grid()
+```
+RMSE appears to level off at about 25 trees.
+
+### Selected Variables
+Random forests don't shrink variables, but they can provide us with helpful insight into how important certain variables are in tree building. Since we are building regression trees, we obtain variable importance by averaging the total decrease in the residual sum of squares when a split over a given predictor occurs over all trees. Plotting the importance of the variables shows us which variables contribute most to reductions in SSE and by how much, and running importance() on the data shows us the decrease in node impurity from splitting on a particular variable. 
+```{r imp}
+importance(eviction.rf)
+varImpPlot(eviction.rf, type = 1, main = "Variable Importance")
+```
+
+Our analysis showed that the variable pct_under_18, which is the percentage of the population who is under 18 in a given census tract, was the most important variable in our random forest model and decreased node impurities the most when averaged across all trees. Other highly important variables included pct_hisp_latino, pct_families_kids, and educational_index. 
+
+A few variables appeared to create more confusion in the data and introduced further node impurities rather than reduced them. These variables were the male-female ratio in a tract and the percentage of disabled inhabitants.

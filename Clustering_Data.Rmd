@@ -1,0 +1,72 @@
+---
+title: "Clustering_Data"
+output: html_document
+date: "2022-12-01"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Data Examination via Clustering
+
+Before we construct supervised methods involving an outcome variable with our eviction data, we can perform unsupervised hierarchical clustering to identify homogeneous subgroups that may be present in our data. Hierarchical clustering is useful because it offers a few ways to perform clustering, so we can get interpretations from different perspectives. 
+
+Hierarchical clustering offers four types of linkage measures for distance between points: single linkage, complete linkage, average linkage, and Ward linkage. These linkage types vary based on how the distance between clusters is computed, so they can help provide different insights.
+
+```{r libs message=FALSE}
+library(factoextra)
+```
+
+```{r clust}
+eviction <- read.csv("sampleeviction.csv")
+eviction <- eviction[, c(8, 11:38)]
+
+hc.single <- hclust(dist(eviction[,2:29]), method = "single")
+hc.complete <- hclust(dist(eviction[,2:29]), method = "complete")
+hc.average <- hclust(dist(eviction[,2:29]), method = "average")
+hc.ward <- hclust(dist(eviction[,2:29]), method = "ward.D2")
+```
+
+Now that our clusters have been created, we can visualize the groups using functions from the factoextra package.
+
+```{r plot}
+fviz_dend(hc.single, k = 3, main = "Single Linkage Cluster Dendrogram")
+fviz_dend(hc.complete, k = 3, main = "Complete Linkage Cluster Dendrogram")
+fviz_dend(hc.average, k = 3, main = "Average Linkage Cluster Dendrogram")
+fviz_dend(hc.ward, k = 3, main = "Ward Linkage Cluster Dendrogram")
+```
+
+Clustering our data leads to some interesting results. Single linkage becomes almost completely dominated by one cluster and can't be differentiated. Complete linkage shows that the data can be divided into two groups fairly well, but the third cluster barely contains any data. Average linkage showed a highly similar pattern of clustering to complete linkage, but with less observations in the 3rd cluster. The first 3 methods of clustering seem to be suboptimal, since such large groups of observations don't give us as helpful insights into data patterns. On the other hand, Ward linkage did a great job at evenly dividing the data into 3 clusters. This suggests that Ward linkage may be the best way for us to group similar observations for analysis.
+
+```{r plot2}
+cut.single <- cutree(hc.single, 3)
+cut.complete <- cutree(hc.complete, 3)
+cut.average <- cutree (hc.average, 3)
+cut.ward <- cutree(hc.ward, 3)
+
+fviz_cluster(list(data = eviction[,2:29], cluster = cut.single, main = "Single Linkage Cluster Plot"))
+fviz_cluster(list(data = eviction[,2:29], cluster = cut.complete, main = "Complete Linkage Cluster Plot"))
+fviz_cluster(list(data = eviction[,2:29], cluster = cut.average, main = "Average Linkage Cluster Plot"))
+fviz_cluster(list(data = eviction[,2:29], cluster = cut.ward, main = "Ward Linkage Cluster Plot"))
+```
+
+Plotting the clustered data along its principal components confirms that Ward linkage appears to have the best balance of groups and is able to achieve a fair degree of separation despite some overlap between clusters 2 and 3. This pattern suggests that some parts of our data can be more easily grouped into homogeneous clusters than others.
+
+We can see how many observations fall into cluster 1, which is fairly well-differentiated, and clusters 2-3, which experience more overlap using Ward linkage.
+```{r table}
+table(cut.ward)
+```
+Ward linkage separates about half of the observations into cluster 1 and splits the remaining observations roughly evenly in clusters 2 and 3. We can see what trends in our outcome variable, eviction judgement rate, are associated with these clusters.
+```{r outcome}
+library(ggplot2)
+
+ggplot(data = eviction, aes(x = as.factor(cut.ward), y = judgement_rate, fill = as.factor(cut.ward))) +
+  geom_boxplot() +
+  scale_fill_brewer(palette = "Set3") +
+  labs(x = "Cluster", y = "Judgement rate", fill = "Cluster") +
+  scale_fill_manual(values = c("brown3", "chartreuse3", "royalblue1")) +
+  ggtitle("Boxplot of Eviction Judgement Rate across Clusters")
+```
+
+The spread of eviction judgement rates appears to be similar across clusters 1 and 3, though cluster 3 has higher outliers. Cluster 2 appears to have a slightly higher eviction judgement rate overall than both clusters 1 and 3. No clusters have outliers on the lower end, and the distribution of judgement rate is right-skewed across all clusters. Our hierarchical clustering results show that clustering is able to offer some insights into how our data might be grouped, and that about half of the data is more differentiable than the other half, but it is likely hampered by having so many variables to work with and classify. 
